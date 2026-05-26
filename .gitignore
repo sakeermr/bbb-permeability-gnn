@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models (large files — store on HuggingFace Hub or DVC)
+results/*.pkl
+results/*.pt
+results/*.pth
+
+# MLflow
+mlruns/
+
+# Large data (raw downloads)
+data/raw/*.sdf
+data/raw/*.mol2
+
+# Keep processed data and results CSVs
+!results/*.csv
+!data/processed/*.csv
+!data/raw/bbbp.csv

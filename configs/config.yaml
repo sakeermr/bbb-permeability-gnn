@@ -1,0 +1,115 @@
+# BBB Permeability Predictor — Configuration
+# Author: sakeermr | github.com/sakeermr/bbb-permeability-gnn
+
+project:
+  name: "BBB Permeability Predictor"
+  version: "1.0.0"
+  author: "sakeermr"
+  github: "https://github.com/sakeermr/bbb-permeability-gnn"
+
+data:
+  raw_path:       "data/raw/bbbp.csv"
+  processed_path: "data/processed/bbbp_clean.csv"
+  smiles_col:     "smiles"
+  label_col:      "p_np"
+  test_size:      0.2
+  random_seed:    42
+
+features:
+  fingerprint_radius: 2
+  fingerprint_nbits:  1024
+  use_descriptors:    true
+  use_fingerprints:   true
+  descriptor_names:
+    - MolWt
+    - LogP
+    - NumHDonors
+    - NumHAcceptors
+    - TPSA
+    - NumRotatableBonds
+    - NumAromaticRings
+    - NumSaturatedRings
+    - NumAliphaticRings
+    - RingCount
+    - FractionCSP3
+    - QED
+    - MolMR
+    - NumHeavyAtoms
+    - NumHeteroatoms
+
+models:
+  random_forest:
+    n_estimators:    300
+    max_depth:       null
+    min_samples_split: 2
+    min_samples_leaf:  1
+    max_features:    "sqrt"
+    class_weight:    "balanced"
+    n_jobs:          -1
+    random_state:    42
+
+  gradient_boosting:
+    n_estimators:  200
+    max_depth:     4
+    learning_rate: 0.05
+    subsample:     0.8
+    random_state:  42
+
+  svm:
+    C:      1.0
+    kernel: "rbf"
+    probability: true
+    class_weight: "balanced"
+
+  logistic_regression:
+    C:        1.0
+    max_iter: 1000
+    class_weight: "balanced"
+
+  gnn:
+    atom_features:   9
+    bond_features:   4
+    hidden_dim:      64
+    attention_heads: 4
+    dropout:         0.3
+    epochs:          120
+    batch_size:      16
+    learning_rate:   0.001
+    weight_decay:    0.0001
+    lr_scheduler:    "cosine"
+
+training:
+  cv_folds:       5
+  cv_scoring:     "roc_auc"
+  threshold:      0.5
+  random_seed:    42
+
+evaluation:
+  metrics:
+    - "AUC-ROC"
+    - "AUC-PR"
+    - "Accuracy"
+    - "F1"
+    - "Precision"
+    - "Recall"
+
+cns_rules:
+  MolWt:             [0, 450]
+  LogP:              [-0.5, 5.0]
+  TPSA:              [0, 90]
+  NumHDonors:        [0, 3]
+  NumHAcceptors:     [0, 7]
+  NumRotatableBonds: [0, 8]
+
+output:
+  figures_dir:  "figures/"
+  results_dir:  "results/"
+  model_path:   "results/best_rf_model.pkl"
+  metrics_csv:  "results/all_model_metrics.csv"
+  figures:
+    - "fig1_roc_curves.png"
+    - "fig2_confusion_matrix.png"
+    - "fig3_metrics_comparison.png"
+    - "fig4_chemical_space.png"
+    - "fig5_shap_importance.png"
+    - "fig6_descriptor_distributions.png"
