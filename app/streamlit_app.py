@@ -1,285 +1,454 @@
 """
-BBB Permeability Predictor — Streamlit Web App
-Author: sakeermr | github.com/sakeermr/bbb-permeability-gnn
-
-Run:
-    streamlit run app/streamlit_app.py
+Blood Cell Classification & Leukemia Alert System
+Streamlit Web Application
+M.R. Sakeer BSc (Hons) Medical Laboratory Science - Gold Badge Capstone
 """
 
 import streamlit as st
-import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import json
+import os
+import time
+from PIL import Image
 
-from rdkit import Chem
-from rdkit.Chem import Draw, AllChem
-from rdkit.Chem.Draw import rdMolDraw2D
-import io, base64
+# ═══════════════════════════════════════════════
+# Paths (relative - works on Streamlit Cloud)
+# ═══════════════════════════════════════════════
+BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH   = os.path.join(BASE_DIR, "blood_cell_classifier.h5")
+INDICES_PATH = os.path.join(BASE_DIR, "class_indices.json")
+METRICS_PATH = os.path.join(BASE_DIR, "model_metrics.json")
 
-from src.data.preprocessing import compute_descriptors, compute_fingerprint
-
-# ── Page config ──────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════
+# Page Config
+# ═══════════════════════════════════════════════
 st.set_page_config(
-    page_title="BBB Permeability Predictor",
-    page_icon="🧠",
+    page_title="Blood Cell AI Analyzer by M.R.Sakeer BSc Hons in MLS",
+    page_icon="🩸",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════
+# CSS Styling
+# ═══════════════════════════════════════════════
 st.markdown("""
 <style>
+    .main { background-color: #f8f9fa; }
     .main-header {
-        background: linear-gradient(135deg, #1B7F79, #2C3E50);
+        background: linear-gradient(135deg, #c0392b 0%, #e74c3c 50%, #922b21 100%);
+        padding: 25px 30px;
+        border-radius: 15px;
         color: white;
-        padding: 1.5rem 2rem;
+        text-align: center;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 15px rgba(192,57,43,0.3);
+    }
+    .main-header h1 { font-size: 2.2em; margin: 0; }
+    .main-header p  { font-size: 1.0em; margin: 5px 0 0 0; opacity: 0.9; }
+    .result-card {
+        background: white;
         border-radius: 12px;
-        margin-bottom: 1.5rem;
+        padding: 20px 25px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        margin-bottom: 15px;
+        border-left: 5px solid #e74c3c;
     }
-    .metric-card {
-        background: #f8f9fa;
-        border-left: 4px solid #1B7F79;
-        padding: 0.75rem 1rem;
-        border-radius: 0 8px 8px 0;
-        margin-bottom: 0.5rem;
+    .alert-box {
+        background: #fdf2f2;
+        border: 2px solid #e74c3c;
+        border-radius: 10px;
+        padding: 15px 20px;
+        margin: 10px 0;
     }
-    .pass { color: #27AE60; font-weight: bold; }
-    .fail { color: #E74C3C; font-weight: bold; }
-    .bbb-pos { background: #d5f4e6; color: #1a6b3a; padding: 0.5rem 1.5rem; border-radius: 8px; font-size: 1.4rem; font-weight: bold; }
-    .bbb-neg { background: #fde8e8; color: #922b21; padding: 0.5rem 1.5rem; border-radius: 8px; font-size: 1.4rem; font-weight: bold; }
+    .alert-box.green {
+        background: #f0fdf4;
+        border-color: #27ae60;
+    }
+    #MainMenu {visibility: hidden;}
+    footer    {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
-# ── Header ────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════
+# Clinical Knowledge Base
+# ═══════════════════════════════════════════════
+CLINICAL_DATA = {
+    "EOSINOPHIL": {
+        "full_name":    "Eosinophil (Acidophilic Granulocyte)",
+        "normal_range": "1-4%",
+        "function":     "Destroys parasites; involved in allergic reactions and asthma.",
+        "elevated":     "Allergies, asthma, parasitic infections, drug reactions",
+        "decreased":    "Cushing's syndrome, acute bacterial infections",
+        "color":        "#f39c12",
+        "icon":         "🟡"
+    },
+    "LYMPHOCYTE": {
+        "full_name":    "Lymphocyte (T-cell / B-cell / NK-cell)",
+        "normal_range": "20-40%",
+        "function":     "Adaptive immune response. B-cells produce antibodies; T-cells kill infected cells.",
+        "elevated":     "Viral infections, lymphocytic leukemia, pertussis",
+        "decreased":    "HIV/AIDS, immunodeficiency disorders, corticosteroid therapy",
+        "color":        "#3498db",
+        "icon":         "🔵"
+    },
+    "MONOCYTE": {
+        "full_name":    "Monocyte (precursor to macrophage)",
+        "normal_range": "2-8%",
+        "function":     "Differentiates into macrophages. Phagocytoses pathogens and debris.",
+        "elevated":     "Chronic infections (TB, malaria), monocytic leukemia",
+        "decreased":    "Aplastic anemia, acute stress response",
+        "color":        "#2ecc71",
+        "icon":         "🟢"
+    },
+    "NEUTROPHIL": {
+        "full_name":    "Neutrophil (Polymorphonuclear Leukocyte)",
+        "normal_range": "50-70%",
+        "function":     "First line of defense against bacterial and fungal infections.",
+        "elevated":     "Bacterial infection, inflammation, stress, steroid use",
+        "decreased":    "Viral infections, aplastic anemia, chemotherapy",
+        "color":        "#e74c3c",
+        "icon":         "🔴"
+    }
+}
+
+# ═══════════════════════════════════════════════
+# Load Model (with compatibility patches)
+# ═══════════════════════════════════════════════
+@st.cache_resource
+def load_model_and_assets():
+    try:
+        import tensorflow as tf
+        from tensorflow.keras.layers import Dense as _Dense
+        from tensorflow.keras.layers import Conv2D as _Conv2D
+        from tensorflow.keras.layers import InputLayer as _InputLayer
+        from tensorflow.keras.layers import BatchNormalization as _BatchNormalization
+        from tensorflow.keras.layers import DepthwiseConv2D as _DepthwiseConv2D
+
+        class CompatInputLayer(_InputLayer):
+            def __init__(self, **kwargs):
+                kwargs.pop('optional', None)
+                kwargs.pop('quantization_config', None)
+                if 'batch_shape' in kwargs:
+                    kwargs['batch_input_shape'] = kwargs.pop('batch_shape')
+                super().__init__(**kwargs)
+
+        class CompatDense(_Dense):
+            def __init__(self, *args, **kwargs):
+                kwargs.pop('quantization_config', None)
+                super().__init__(*args, **kwargs)
+
+        class CompatConv2D(_Conv2D):
+            def __init__(self, *args, **kwargs):
+                kwargs.pop('quantization_config', None)
+                super().__init__(*args, **kwargs)
+
+        class CompatBatchNormalization(_BatchNormalization):
+            def __init__(self, *args, **kwargs):
+                kwargs.pop('quantization_config', None)
+                super().__init__(*args, **kwargs)
+
+        class CompatDepthwiseConv2D(_DepthwiseConv2D):
+            def __init__(self, *args, **kwargs):
+                kwargs.pop('quantization_config', None)
+                super().__init__(*args, **kwargs)
+
+        custom_objects = {
+            'InputLayer':         CompatInputLayer,
+            'Dense':              CompatDense,
+            'Conv2D':             CompatConv2D,
+            'BatchNormalization': CompatBatchNormalization,
+            'DepthwiseConv2D':    CompatDepthwiseConv2D,
+        }
+
+        if not os.path.exists(MODEL_PATH):
+            st.sidebar.error(f"Model not found at: {MODEL_PATH}")
+            return None, None, {}, False
+
+        model = tf.keras.models.load_model(
+            MODEL_PATH,
+            compile=False,
+            custom_objects=custom_objects
+        )
+
+        with open(INDICES_PATH, "r") as f:
+            class_indices = json.load(f)
+
+        idx_to_class = {v: k for k, v in class_indices.items()}
+
+        metrics = {}
+        if os.path.exists(METRICS_PATH):
+            with open(METRICS_PATH, "r") as f:
+                metrics = json.load(f)
+
+        return model, idx_to_class, metrics, True
+
+    except Exception as e:
+        st.sidebar.error(f"Load error: {str(e)}")
+        return None, None, {}, False
+
+
+# ═══════════════════════════════════════════════
+# Prediction Functions
+# ═══════════════════════════════════════════════
+def reinhard_normalise(img_array):
+    """
+    Reinhard colour normalisation to reduce domain shift.
+    Standardises stain colours from different microscopes/labs
+    to match the Kaggle Giemsa-stained training dataset profile.
+    This fixes misclassification of monocytes from internet images.
+    Target stats computed from paultimothymooney/blood-cells dataset.
+    """
+    target_mean = np.array([148.60, 105.97, 145.90])
+    target_std  = np.array([30.22,  40.15,  25.67])
+
+    img      = img_array.astype(np.float32)
+    src_mean = img.mean(axis=(0, 1))
+    src_std  = img.std(axis=(0, 1))
+
+    for i in range(3):
+        img[:, :, i] = (img[:, :, i] - src_mean[i]) / (src_std[i] + 1e-6)
+        img[:, :, i] = img[:, :, i] * target_std[i] + target_mean[i]
+
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+
+def preprocess_image(image):
+    img       = image.convert("RGB").resize((224, 224))
+    img_array = np.array(img)
+    img_array = reinhard_normalise(img_array)   # normalise stain colours
+    img_array = img_array / 255.0
+    return np.expand_dims(img_array, axis=0)
+
+
+def predict(model, image, idx_to_class):
+    processed    = preprocess_image(image)
+    probs        = model.predict(processed, verbose=0)[0]
+    top_idx      = int(np.argmax(probs))
+    top_class    = idx_to_class[top_idx]
+    top_conf     = float(probs[top_idx])
+    all_probs    = {idx_to_class[i]: float(p) for i, p in enumerate(probs)}
+    needs_review = top_conf < 0.75
+    return {
+        "predicted_class": top_class,
+        "confidence":      top_conf,
+        "all_probs":       all_probs,
+        "needs_review":    needs_review
+    }
+
+
+# ═══════════════════════════════════════════════
+# Header
+# ═══════════════════════════════════════════════
 st.markdown("""
 <div class="main-header">
-    <h1 style="margin:0;font-size:1.8rem;">🧠 BBB Permeability Predictor</h1>
-    <p style="margin:0.3rem 0 0;opacity:0.85;font-size:0.95rem;">
-        Multi-model prediction of Blood-Brain Barrier permeability from SMILES<br>
-        <b>Models:</b> Random Forest · Gradient Boosting · SVM · GNN (AttentiveFP)
-    </p>
+    <h1>🩸 Blood Cell AI Analyzer By M.R. Sakeer</h1>
+    <p>Automated WBC Classification & Abnormal Cell Detection System</p>
+    <p><small>Powered by Custom CNN Deep Learning | Reinhard Stain Normalisation | For Screening Purposes Only</small></p>
 </div>
 """, unsafe_allow_html=True)
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════
+# Load Model
+# ═══════════════════════════════════════════════
+model, idx_to_class, metrics, model_loaded = load_model_and_assets()
+
+# ═══════════════════════════════════════════════
+# Sidebar
+# ═══════════════════════════════════════════════
 with st.sidebar:
-    st.header("⚙️ Settings")
-    threshold = st.slider("Decision threshold", 0.1, 0.9, 0.5, 0.05)
-    show_rules = st.toggle("Show CNS drug-like rules", value=True)
-    st.markdown("---")
-    st.markdown("**About**")
-    st.markdown("""
-    This tool predicts if a molecule can cross the blood-brain barrier,
-    which is critical for CNS drug discovery.
-
-    - **BBB+** = likely permeable
-    - **BBB−** = likely impermeable
-
-    [GitHub](https://github.com/sakeermr/bbb-permeability-gnn) |
-    [Paper (ChemRxiv)](#)
-    """)
-
-# ── Main input ────────────────────────────────────────────────────────────────
-col_input, col_examples = st.columns([3, 1])
-with col_input:
-    smiles_input = st.text_input(
-        "Enter SMILES string",
-        value="Cn1cnc2c1c(=O)n(C)c(=O)n2C",
-        help="Enter a valid SMILES string for your molecule",
-        placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O (Aspirin)",
-    )
-with col_examples:
-    st.markdown("**Quick examples:**")
-    examples = {
-        "Caffeine (BBB+)":    "Cn1cnc2c1c(=O)n(C)c(=O)n2C",
-        "Diazepam (BBB+)":   "O=C1CN=C(c2ccccc2)c2cc(Cl)ccc21",
-        "Metformin (BBB−)":  "CN(C)C(=N)NC(=N)N",
-        "Amoxicillin (BBB−)":"CC1(C)SC2C(NC(=O)C(N)c3ccc(O)cc3)C(=O)N2C1C(=O)O",
-    }
-    for name, smi in examples.items():
-        if st.button(name, use_container_width=True):
-            smiles_input = smi
-            st.rerun()
-
-# ── Prediction ────────────────────────────────────────────────────────────────
-if smiles_input:
-    mol = Chem.MolFromSmiles(smiles_input)
-
-    if mol is None:
-        st.error("❌ Invalid SMILES. Please check your input.")
+    st.markdown("### System Info")
+    if model_loaded:
+        acc = metrics.get("test_accuracy", 0)
+        st.success("Model Loaded Successfully")
+        st.metric("Test Accuracy",      f"{acc*100:.1f}%")
+        st.metric("Model Architecture", "Custom CNN")
+        st.metric("Cell Classes",       "4 WBC Types")
     else:
-        desc = compute_descriptors(smiles_input)
-        fp   = compute_fingerprint(smiles_input, nbits=1024)
+        st.error("Model not found!")
 
-        # ── Molecule structure ───────────────────────────────────
-        col_mol, col_pred, col_radar = st.columns([1, 1, 1])
+    st.divider()
+    st.markdown("### WBC Reference Ranges")
+    for cls, data in CLINICAL_DATA.items():
+        st.markdown(f"""
+        <div style='padding:8px; margin:5px 0; background:#f8f9fa; border-radius:8px;'>
+            {data['icon']} <b>{cls}</b><br>
+            <small style='color:#888'>Normal: {data['normal_range']}</small>
+        </div>
+        """, unsafe_allow_html=True)
 
-        with col_mol:
-            st.subheader("🔬 Structure")
-            drawer = rdMolDraw2D.MolDraw2DCairo(350, 280)
-            drawer.drawOptions().addStereoAnnotation = True
-            drawer.DrawMolecule(mol)
-            drawer.FinishDrawing()
-            img_bytes = drawer.GetDrawingText()
-            st.image(img_bytes, use_column_width=True)
-            st.caption(f"**Formula:** {Chem.rdMolDescriptors.CalcMolFormula(mol)}")
+    st.divider()
+    st.warning("For educational purposes only. Confirm with qualified pathologist.")
 
-        with col_pred:
-            st.subheader("🎯 Prediction")
 
-            # Simulate model predictions (replace with actual model.predict_proba)
-            np.random.seed(hash(smiles_input) % (2**31))
+# ═══════════════════════════════════════════════
+# Main Content
+# ═══════════════════════════════════════════════
+col_upload, col_result = st.columns([1, 1.4], gap="large")
 
-            # Rule-based heuristic for demo (replace with actual model)
-            mw   = desc["MolWt"]
-            logp = desc["LogP"]
-            tpsa = desc["TPSA"]
-            hbd  = desc["NumHDonors"]
-            hba  = desc["NumHAcceptors"]
+with col_upload:
+    st.markdown("### 🔬 Upload Blood Smear Image")
+    uploaded_file = st.file_uploader(
+        "Upload a microscope blood smear image",
+        type=["jpg", "jpeg", "png", "bmp"]
+    )
 
-            cns_score = (
-                (1 if mw < 450 else 0) +
-                (1 if -0.5 <= logp <= 5 else 0) +
-                (1 if tpsa < 90 else 0) +
-                (1 if hbd <= 3 else 0) +
-                (1 if hba <= 7 else 0)
-            ) / 5.0
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Uploaded Image", use_column_width=True)
 
-            base_prob = cns_score * 0.75 + 0.1
-            noise = np.random.normal(0, 0.05)
-            prob = float(np.clip(base_prob + noise, 0.05, 0.95))
+        st.markdown("### Patient Info (Optional)")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            patient_id  = st.text_input("Patient ID", placeholder="PT-2026-001")
+            patient_age = st.number_input("Age", min_value=0, max_value=120, value=0)
+        with col_b:
+            patient_sex = st.selectbox("Sex", ["Select", "Male", "Female", "Other"])
+            sample_type = st.selectbox("Sample", ["Peripheral Blood Smear", "Bone Marrow", "Other"])
 
-            # Prediction display
-            pred_label = "BBB+" if prob >= threshold else "BBB−"
-            css_class  = "bbb-pos" if pred_label == "BBB+" else "bbb-neg"
-            icon       = "✅" if pred_label == "BBB+" else "⛔"
+        analyze_btn = st.button("🔬 Analyze Blood Cell", use_container_width=True, type="primary")
 
-            st.markdown(f'<div class="{css_class}">{icon} {pred_label}</div>',
-                        unsafe_allow_html=True)
-            st.metric("Permeability Probability", f"{prob:.3f}",
-                      delta=f"{prob - threshold:+.3f} vs threshold ({threshold})")
+with col_result:
+    st.markdown("### 📊 Analysis Results")
 
-            # Probability bar
-            fig_bar, ax = plt.subplots(figsize=(4, 0.6))
-            ax.barh(0, prob, color="#27AE60" if prob >= threshold else "#E74C3C",
-                    height=0.5, alpha=0.85)
-            ax.barh(0, 1-prob, left=prob, color="#ECF0F1", height=0.5)
-            ax.axvline(threshold, color="navy", lw=1.5, ls="--")
-            ax.set_xlim(0, 1); ax.axis("off")
-            st.pyplot(fig_bar, use_container_width=True)
-            plt.close()
+    if not uploaded_file:
+        st.markdown("""
+        <div style="background:#f0f4ff; border-radius:12px; padding:30px; text-align:center; color:#666;">
+            <h3 style="color:#aaa;">Upload an image to begin</h3>
+            <p>AI will identify the WBC type and flag abnormalities</p>
+            <br>
+            🔴 Neutrophil | 🔵 Lymphocyte | 🟢 Monocyte | 🟡 Eosinophil
+        </div>
+        """, unsafe_allow_html=True)
 
-            st.caption(f"**Confidence:** {'High' if abs(prob-0.5) > 0.25 else 'Moderate' if abs(prob-0.5) > 0.1 else 'Low'}")
+    elif not model_loaded:
+        st.error("Model not loaded. Check that all model files are in the repository.")
 
-            # QED
-            st.metric("Drug-likeness (QED)", f"{desc['QED']:.3f}",
-                      help="0 = least drug-like, 1 = most drug-like")
+    elif uploaded_file and analyze_btn:
+        with st.spinner("Analyzing blood cell..."):
+            time.sleep(0.5)
+            result = predict(model, image, idx_to_class)
 
-        with col_radar:
-            st.subheader("📊 Descriptor Profile")
-            props = {
-                "MW":        (desc["MolWt"],             500,  "Da"),
-                "LogP":      (desc["LogP"],               5.0, ""),
-                "TPSA":      (desc["TPSA"],               90,  "Å²"),
-                "HBD":       (desc["NumHDonors"],         3,   ""),
-                "HBA":       (desc["NumHAcceptors"],      7,   ""),
-                "RotBonds":  (desc["NumRotatableBonds"],  8,   ""),
-                "Rings":     (desc["RingCount"],          5,   ""),
-            }
-            for prop, (val, limit, unit) in props.items():
-                pct   = min(val / limit, 1.5) if limit > 0 else 0
-                color = "#27AE60" if pct <= 1.0 else "#E74C3C"
-                flag  = "✓" if pct <= 1.0 else "✗"
-                st.markdown(
-                    f'<div class="metric-card"><b>{prop}</b>: '
-                    f'{val:.1f} {unit} '
-                    f'<span style="color:{color}">{flag} (limit: {limit})</span></div>',
-                    unsafe_allow_html=True)
+        cls        = result["predicted_class"]
+        conf       = result["confidence"]
+        clin_info  = CLINICAL_DATA.get(cls, {})
+        conf_pct   = conf * 100
+        conf_color = "#27ae60" if conf_pct >= 80 else "#f39c12" if conf_pct >= 60 else "#e74c3c"
 
-        # ── CNS drug rules ───────────────────────────────────────
-        if show_rules:
-            st.markdown("---")
-            st.subheader("📋 CNS Drug-Likeness Rules")
-            rules = [
-                ("Molecular Weight", desc["MolWt"],             0,  450,  "< 450 Da (CNS)",          "Da"),
-                ("LogP",             desc["LogP"],              -0.5, 5.0, "−0.5 to 5.0 (CNS)",       ""),
-                ("TPSA",             desc["TPSA"],               0,   90,  "< 90 Å² (CNS)",            "Å²"),
-                ("H-Bond Donors",    desc["NumHDonors"],         0,    3,  "≤ 3 (CNS), ≤ 5 (Ro5)",    ""),
-                ("H-Bond Acceptors", desc["NumHAcceptors"],      0,    7,  "≤ 7 (CNS), ≤ 10 (Ro5)",   ""),
-                ("Rotatable Bonds",  desc["NumRotatableBonds"],  0,    8,  "≤ 8 (CNS)",                ""),
-                ("Lipinski Ro5",     desc["MolWt"],              0,  500,  "MW < 500 (Ro5)",           "Da"),
-            ]
-            cols = st.columns(4)
-            passed = 0
-            for i, (name, val, lo, hi, rule, unit) in enumerate(rules):
-                ok = lo <= val <= hi
-                if ok: passed += 1
-                with cols[i % 4]:
-                    st.markdown(
-                        f"**{name}**<br>"
-                        f"{val:.1f} {unit}<br>"
-                        f"<span class='{'pass' if ok else 'fail'}'>{'✓ PASS' if ok else '✗ FAIL'}</span><br>"
-                        f"<small>{rule}</small>",
-                        unsafe_allow_html=True)
-            st.info(f"**{passed}/{len(rules)} CNS rules passed** — "
-                    f"{'Likely CNS drug-like ✓' if passed >= 5 else 'May have CNS penetration issues ⚠️'}")
+        st.markdown(f"""
+        <div class="result-card">
+            <h2 style="margin:0; color:{clin_info.get('color','#e74c3c')};">
+                {clin_info.get('icon','🔬')} {cls}
+            </h2>
+            <p style="font-size:1.1em; color:#444; margin:5px 0;">
+                {clin_info.get('full_name', cls)}
+            </p>
+            <h3 style="color:{conf_color}; margin:10px 0 0 0;">
+                Confidence: {conf_pct:.1f}%
+            </h3>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # ── All descriptors table ────────────────────────────────
-        with st.expander("📄 All Computed Descriptors"):
-            desc_df = pd.DataFrame([desc]).T.reset_index()
-            desc_df.columns = ["Property", "Value"]
-            desc_df["Value"] = desc_df["Value"].round(4)
-            st.dataframe(desc_df, use_container_width=True, hide_index=True)
+        st.markdown("**Probability Distribution:**")
+        for cell_cls, prob in result["all_probs"].items():
+            color = CLINICAL_DATA.get(cell_cls, {}).get("color", "#999")
+            icon  = CLINICAL_DATA.get(cell_cls, {}).get("icon", "")
+            st.markdown(f"""
+            <div style="margin:6px 0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                    <span>{icon} <b>{cell_cls}</b></span>
+                    <span style="color:{color}; font-weight:bold;">{prob*100:.1f}%</span>
+                </div>
+                <div style="background:#eee; border-radius:10px; height:10px;">
+                    <div style="background:{color}; width:{int(prob*100)}%; height:10px; border-radius:10px;"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-# ── Batch mode ────────────────────────────────────────────────────────────────
-st.markdown("---")
-with st.expander("📁 Batch Prediction — Upload CSV"):
-    uploaded = st.file_uploader("Upload CSV with 'smiles' column", type=["csv"])
-    if uploaded:
-        df_up = pd.read_csv(uploaded)
-        if "smiles" not in df_up.columns:
-            st.error("CSV must have a 'smiles' column")
+        st.divider()
+
+        if result["needs_review"]:
+            st.markdown("""
+            <div class="alert-box">
+                <h4 style="color:#c0392b; margin:0;">⚠️ PATHOLOGIST REVIEW RECOMMENDED</h4>
+                <p style="margin:8px 0 0 0; color:#666;">
+                    Low confidence or atypical morphology. Manual review advised.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            results = []
-            for smi in df_up["smiles"].tolist():
-                mol_t = Chem.MolFromSmiles(str(smi))
-                if mol_t is None:
-                    results.append({"smiles": smi, "error": "Invalid SMILES"})
-                    continue
-                d = compute_descriptors(smi)
-                if d:
-                    cns_score = (
-                        (1 if d["MolWt"] < 450 else 0) +
-                        (1 if -0.5 <= d["LogP"] <= 5 else 0) +
-                        (1 if d["TPSA"] < 90 else 0) +
-                        (1 if d["NumHDonors"] <= 3 else 0) +
-                        (1 if d["NumHAcceptors"] <= 7 else 0)
-                    ) / 5.0
-                    prob = float(np.clip(cns_score * 0.75 + 0.1, 0.05, 0.95))
-                    results.append({
-                        "smiles": smi,
-                        "BBB_probability": round(prob, 4),
-                        "BBB_prediction": "BBB+" if prob >= threshold else "BBB−",
-                        "MolWt": round(d["MolWt"], 2),
-                        "LogP":  round(d["LogP"],  3),
-                        "TPSA":  round(d["TPSA"],  2),
-                        "QED":   round(d["QED"],   3),
-                    })
-            res_df = pd.DataFrame(results)
-            st.dataframe(res_df, use_container_width=True)
-            csv = res_df.to_csv(index=False)
-            st.download_button("⬇️ Download Predictions", csv,
-                               "bbb_predictions.csv", "text/csv")
+            st.markdown(f"""
+            <div class="alert-box green">
+                <h4 style="color:#27ae60; margin:0;">✅ Normal Cell Morphology</h4>
+                <p style="margin:8px 0 0 0; color:#666;">
+                    Cell identified with high confidence. Normal {cls.lower()} morphology.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
-# ── Footer ────────────────────────────────────────────────────────────────────
-st.markdown("---")
+        if clin_info:
+            with st.expander("📋 Clinical Information", expanded=True):
+                st.markdown(f"**Normal Range:** `{clin_info['normal_range']}`")
+                st.markdown(f"**Function:** {clin_info['function']}")
+                col_e, col_d = st.columns(2)
+                with col_e:
+                    st.markdown("**🔺 Elevated in:**")
+                    for item in clin_info["elevated"].split(", "):
+                        st.markdown(f"- {item}")
+                with col_d:
+                    st.markdown("**🔻 Decreased in:**")
+                    for item in clin_info["decreased"].split(", "):
+                        st.markdown(f"- {item}")
+
+        with st.expander("📄 Generate Lab Report"):
+            report = f"""
+AUTOMATED BLOOD CELL ANALYSIS REPORT
+=====================================
+Date/Time:    {time.strftime('%Y-%m-%d %H:%M:%S')}
+Patient ID:   {patient_id if patient_id else 'N/A'}
+Age / Sex:    {patient_age if patient_age else 'N/A'} / {patient_sex}
+Sample:       {sample_type}
+Analyzer:     Blood Cell AI (Custom CNN) v1.0
+Test Acc:     {metrics.get('test_accuracy', 0)*100:.1f}%
+
+RESULT
+------
+Cell Type:    {cls}
+Full Name:    {clin_info.get('full_name', '')}
+Confidence:   {conf_pct:.2f}%
+Normal Range: {clin_info.get('normal_range', 'N/A')}
+
+PROBABILITIES
+-------------
+""" + "\n".join([f"  {k:<15}: {v*100:.2f}%" for k, v in result["all_probs"].items()]) + f"""
+
+CLINICAL FLAG
+-------------
+{'REVIEW REQUIRED - Low confidence. Manual microscopy recommended.'
+ if result['needs_review'] else
+ 'No abnormality flagged. Normal cell morphology.'}
+
+DISCLAIMER: AI screening tool for educational purposes only.
+Not a clinical diagnosis. Confirm with qualified professional.
+=====================================
+"""
+            st.code(report, language="text")
+            st.download_button(
+                "⬇️ Download Report (.txt)",
+                data=report,
+                file_name=f"BloodCell_{time.strftime('%Y%m%d_%H%M%S')}.txt",
+                mime="text/plain"
+            )
+
+    elif uploaded_file:
+        st.info("Click **Analyze Blood Cell** to run AI analysis.")
+
+# ═══════════════════════════════════════════════
+# Footer
+# ═══════════════════════════════════════════════
+st.divider()
 st.markdown("""
-<div style="text-align:center;color:#888;font-size:0.85rem;">
-    Built by <b>sakeermr</b> ·
-    <a href="https://github.com/sakeermr/bbb-permeability-gnn">GitHub</a> ·
-    BSc Hons Medical Laboratory Science · Junior Cheminformatics Research Scientist<br>
-    <i>Note: Predictions are for research purposes only. Always validate computationally predicted properties experimentally.</i>
-</div>
+<p style="text-align:center; color:#aaa; font-size:0.85em;">
+    🩸 Blood Cell AI Analyzer | BSc (Hons) Medical Laboratory Science Capstone | Gold Badge
+</p>
 """, unsafe_allow_html=True)
