@@ -254,6 +254,73 @@ def combined_decision(desc, smiles):
             if label == "BBB+":
                 label, css, icon = "Borderline", "bbb-brd", "Borderline"
 
+        # ── ADVANCED CHEMICAL OVERRIDES ────────────────────────────
+        SMARTS_SO3  = Chem.MolFromSmarts("[S](=O)(=O)[OH,O-]")
+        SMARTS_THIA = Chem.MolFromSmarts("C1CSC(N1)")
+        SMARTS_PIP  = Chem.MolFromSmarts("N1CCNCC1")
+        SMARTS_ACOO = Chem.MolFromSmarts("c(C(=O)O)")
+        SMARTS_ARNN = Chem.MolFromSmarts("n")
+        SMARTS_NME  = Chem.MolFromSmarts("[nH0;r][CH3]")
+        mol_ov = Chem.MolFromSmiles(smiles)
+        if mol_ov:
+            # 1. Sulfonate/sulfonic acid -> always BBB-
+            if mol_ov.HasSubstructMatch(SMARTS_SO3):
+                label, css, icon = "BBB-", "bbb-neg", "BBB-"
+                final = min(final, 0.30)
+
+            # 2. Penam antibiotics (thiazolidine ring = penicillin/ampicillin)
+            elif mol_ov.HasSubstructMatch(SMARTS_THIA):
+                if desc["TPSA"] > 80 or desc["NumHDonors"] >= 3:
+                    label, css, icon = "BBB-", "bbb-neg", "BBB-"
+                    final = min(final, 0.38)
+                elif label == "BBB+":
+                    label, css, icon = "Borderline", "bbb-brd", "Borderline"
+                    final = min(final, 0.60)
+
+            # 3. Zwitterion: piperazine + aromatic COOH (fluoroquinolones) -> BBB-
+            elif (mol_ov.HasSubstructMatch(SMARTS_PIP) and
+                  mol_ov.HasSubstructMatch(SMARTS_ACOO)):
+                label, css, icon = "BBB-", "bbb-neg", "BBB-"
+                final = min(final, 0.38)
+
+            else:
+                nme_count = len(mol_ov.GetSubstructMatches(SMARTS_NME))
+                is_methylxanthine = nme_count >= 2  # caffeine=3, theophylline=2
+
+                # 4. Very negative LogP + high TPSA -> BBB- regardless of aromatic N
+                if desc["LogP"] < -0.8 and desc["TPSA"] > 110:
+                    label, css, icon = "BBB-", "bbb-neg", "BBB-"
+                    final = min(final, 0.38)
+
+                # 5. Negative LogP (non-methylxanthine) -> Borderline or BBB-
+                elif desc["LogP"] < -0.5 and not is_methylxanthine:
+                    if label == "BBB+":
+                        label, css, icon = "Borderline", "bbb-brd", "Borderline"
+                        final = min(final, 0.64)
+                    if desc["NumHDonors"] >= 3:
+                        label, css, icon = "BBB-", "bbb-neg", "BBB-"
+                        final = min(final, 0.40)
+
+                # 6. Serotonin-like (HBD>=3 + low LogP + moderate TPSA + small MW)
+                if (desc["NumHDonors"] >= 3 and desc["LogP"] < 1.5 and
+                        desc["MolWt"] < 220 and desc["TPSA"] > 55):
+                    if label == "BBB+":
+                        label, css, icon = "Borderline", "bbb-brd", "Borderline"
+                        final = min(final, 0.64)
+
+                # 7. L-DOPA type: TPSA>100 + LogP<0.5 + HBD>=3 -> Borderline
+                if desc["TPSA"] > 100 and desc["LogP"] < 0.5 and desc["NumHDonors"] >= 3:
+                    label, css, icon = "Borderline", "bbb-brd", "Borderline"
+                    final = min(final, 0.64)
+
+                # 8. Small aromatic acids (benzoic acid type) -> Borderline
+                SMARTS_BENZ_ACID = Chem.MolFromSmarts("c1ccccc1C(=O)O")
+                if (mol_ov.HasSubstructMatch(SMARTS_BENZ_ACID) and
+                        desc["MolWt"] < 200 and desc["LogP"] < 2.5):
+                    if label == "BBB+":
+                        label, css, icon = "Borderline", "bbb-brd", "Borderline"
+                        final = min(final, 0.62)
+
     # Confidence: only "High" if all 3 components agree
     if label == "BBB+" and final >= 0.82 and cns_passed >= 5 and sim_pos >= 0.3:
         confidence = "High"
