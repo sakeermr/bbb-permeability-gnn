@@ -244,7 +244,7 @@ def combined_decision(desc, smiles):
             label, css, icon = "BBB-", "bbb-neg", "BBB-"
             final = min(final, 0.40)
         # Catecholamines (dopamine-like): polar + low LogP + multiple OH
-        if (desc["TPSA"] > 60 and desc["LogP"] < 0.5 and
+        if (desc["TPSA"] > 60 and desc["LogP"] < 1.5 and
                 desc["NumHDonors"] >= 2 and desc["MolWt"] < 250):
             if label == "BBB+":
                 label, css, icon = "Borderline", "bbb-brd", "Borderline"
