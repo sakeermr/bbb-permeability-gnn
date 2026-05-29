@@ -284,7 +284,7 @@ def combined_decision(desc, smiles):
             if mol.HasSubstructMatch(_SMARTS["benz_acid"]) and desc["MolWt"] < 200 and desc["LogP"] < 2.5:
                 if label == "BBB+": label, css, icon = "Borderline", "bbb-brd", "Borderline"
             # 11. Outside domain + BBB+ -> Borderline (conservative)
-            if ad_sim < 0.25 and label == "BBB+":
+            if ad_sim < 0.25 and label == "BBB+" and cns_passed < 5:
                 label, css, icon = "Borderline", "bbb-brd", "Borderline"
             # 12. Poor CNS profile -> no BBB+
             if cns_passed < 3 and label == "BBB+":
@@ -586,8 +586,8 @@ with st.expander("Batch Prediction — Upload CSV"):
                     "confidence":     res["confidence"],
                     "AD":             res["ad_label"],
                     "P_BBB+":         res["prob"],
-                    "CNS_score":      round(res["cns_passed"]/6.0, 2),
-                    "CNS_passed":     f"{res['cns_passed']}/6",
+                    "CNS_score":      f'{round(res["cns_passed"]/6.0, 2):.2f}',
+                    "CNS_passed":     f"{res['cns_passed']} of 6",
                     "MolWt": d["MolWt"] if d else None,
                     "LogP":  d["LogP"]  if d else None,
                     "TPSA":  d["TPSA"]  if d else None,
