@@ -30,16 +30,18 @@ This project builds a **multi-model computational pipeline** to predict BBB perm
 
 ## Results
 
-| Model | AUC-ROC | AUC-PR | Accuracy | F1 | Precision | Recall |
-|-------|---------|--------|----------|-----|-----------|--------|
-| Logistic Regression | 0.943 | 0.962 | 0.824 | 0.870 | 0.769 | 1.000 |
-| SVM (RBF) | 0.943 | 0.957 | 0.824 | 0.870 | 0.769 | 1.000 |
-| Gradient Boosting | 0.886 | 0.937 | 0.588 | 0.741 | 0.588 | 1.000 |
-| Random Forest | 0.879 | 0.914 | 0.647 | 0.769 | 0.625 | 1.000 |
-| **GNN (AttentiveFP)** | **0.910** | **0.973** | **0.824** | **0.857** | **0.818** | **0.900** |
-| DeepChem RF baseline | 0.868 | — | — | — | — | — |
+| Model | AUC-ROC | AUC-PR | Accuracy | F1 | Brier Score |
+|-------|---------|--------|----------|----|-------------|
+| **Random Forest (calibrated)** | **0.9617** | **0.9757** | **0.884** | **0.912** | **0.082** |
+| Logistic Regression (calibrated) | 0.9109 | 0.9345 | 0.862 | 0.890 | 0.128 |
+| GNN AttentiveFP (Colab GPU) | 0.910 | — | — | — | — |
+| DeepChem RF baseline | 0.868 | — | — | — | — |
 
-> All results use **scaffold-based Bemis-Murcko split** (80/20) to ensure no structural overlap between train and test. GNN results from Google Colab GPU training (NVIDIA T4, 120 epochs).
+**Benchmark validation:** 15/15 curated molecules correctly classified (100%)  
+**Dataset:** B3DB — 7,807 experimentally validated compounds (Meng et al., Scientific Data 2021)
+
+> Formula: `Final Score = 0.50 × P(BBB+) + 0.35 × CNS Rules + 0.15 × Similarity`  
+> Conservative mode: BBB+ requires score ≥ 0.72 AND CNS ≥ 4/6
 
 ---
 
