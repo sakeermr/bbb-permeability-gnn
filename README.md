@@ -1,18 +1,18 @@
 <div align="center">
 
 # 🧠 BBB Permeability Predictor
-### Multi-model ML prediction of Blood-Brain Barrier permeability for CNS drug discovery
+### Calibrated multi-model prediction of Blood-Brain Barrier permeability for CNS drug discovery
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python)](https://python.org)
 [![RDKit](https://img.shields.io/badge/RDKit-2023-green?style=flat-square)](https://rdkit.org)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-orange?style=flat-square&logo=pytorch)](https://pytorch.org)
-[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-F7931E?style=flat-square&logo=scikit-learn)](https://scikit-learn.org)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-F7931E?style=flat-square)](https://scikit-learn.org)
 [![Tests](https://img.shields.io/badge/Tests-23%20passed-brightgreen?style=flat-square)](tests/)
+[![CI](https://github.com/sakeermr/bbb-permeability-gnn/actions/workflows/ci.yml/badge.svg)](https://github.com/sakeermr/bbb-permeability-gnn/actions/workflows/ci.yml)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://bbb-permeability-gnn-smz6lvxqzkw9qtd2mjyfff.streamlit.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sakeermr/bbb-permeability-gnn/blob/main/notebooks/02_gnn_training.ipynb)
 
 **sakeermr** · Junior Cheminformatics Research Scientist  
-[LinkedIn](https://linkedin.com/in/sakeermr) · [GitHub](https://github.com/sakeermr) · [Preprint (ChemRxiv)](#)
+[LinkedIn](https://linkedin.com/in/sakeermr) · [GitHub](https://github.com/sakeermr) · [Live App](https://bbb-permeability-gnn-smz6lvxqzkw9qtd2mjyfff.streamlit.app/) · [Technical Report](docs/BBB_Technical_Report.md)
 
 </div>
 
@@ -20,15 +20,23 @@
 
 ## Overview
 
-Blood-brain barrier (BBB) permeability is one of the most critical ADMET properties in CNS drug discovery. Compounds must cross the BBB to reach their central nervous system targets, yet this filtering step eliminates the majority of drug candidates.
+Blood-brain barrier (BBB) permeability is one of the most critical ADMET properties in CNS drug discovery. This project builds a **calibrated, interpretable prediction system** that combines machine learning with established medicinal chemistry knowledge to estimate BBB permeability from molecular SMILES strings.
 
-This project builds a **multi-model computational pipeline** to predict BBB permeability from molecular SMILES strings, benchmarking classical ML models against a state-of-the-art **Graph Attention Network (AttentiveFP)**. All models use **scaffold-based train/test splitting** to prevent data leakage and ensure results generalise to structurally novel compounds.
+The system uses a three-component decision formula:
 
-**Key result:** SVM (RBF) achieves AUC-ROC of **0.943** on scaffold-split test set. AttentiveFP GNN achieves **0.910** (Colab GPU results) — outperforming the DeepChem RF baseline by **+4.2%**.
+```
+Final Score = 0.50 × P(BBB+) + 0.35 × CNS Rules + 0.15 × Similarity
+```
+
+with ten chemistry-based override rules for structural classes where ML probability alone is insufficient (sulfonates, penam antibiotics, fluoroquinolones, catecholamines, etc.).
+
+**Key result:** AUC-ROC **0.9617** on B3DB test set (+9.2% vs DeepChem baseline) · **15/15** benchmark molecules correctly classified (100%)
 
 ---
 
 ## Results
+
+### Model Performance on B3DB (7,807 compounds · stratified 80/20 split)
 
 | Model | AUC-ROC | AUC-PR | Accuracy | F1 | Brier Score |
 |-------|---------|--------|----------|----|-------------|
@@ -37,31 +45,44 @@ This project builds a **multi-model computational pipeline** to predict BBB perm
 | GNN AttentiveFP (Colab GPU) | 0.910 | — | — | — | — |
 | DeepChem RF baseline | 0.868 | — | — | — | — |
 
-**Benchmark validation:** 15/15 curated molecules correctly classified (100%)  
-**Dataset:** B3DB — 7,807 experimentally validated compounds (Meng et al., Scientific Data 2021)
+> All results use **stratified 80/20 split**. Brier Score of 0.082 indicates well-calibrated probabilities.
 
-> Formula: `Final Score = 0.50 × P(BBB+) + 0.35 × CNS Rules + 0.15 × Similarity`  
-> Conservative mode: BBB+ requires score ≥ 0.72 AND CNS ≥ 4/6
+### Benchmark Validation — 15 Curated Molecules (100% accuracy)
+
+| Compound | Expected | Predicted | Score | CNS |
+|----------|----------|-----------|-------|-----|
+| Caffeine | BBB+ | ✅ BBB+ | 0.837 | 5/6 |
+| Diazepam | BBB+ | ✅ BBB+ | 0.928 | 6/6 |
+| Nicotine | BBB+ | ✅ BBB+ | 0.928 | 6/6 |
+| Fluoxetine | BBB+ | ✅ BBB+ | 0.928 | 6/6 |
+| Morphine | BBB+ | ✅ BBB+ | 0.928 | 6/6 |
+| Atropine | BBB+ | ✅ BBB+ | 0.846 | 6/6 |
+| Dopamine | Borderline | ✅ Borderline | 0.697 | 6/6 |
+| Serotonin | Borderline | ✅ Borderline | 0.691 | 6/6 |
+| L-DOPA | Borderline | ✅ Borderline | 0.466 | 4/6 |
+| Gabapentin | Borderline | ✅ Borderline | 0.727 | 6/6 |
+| Ampicillin | BBB- | ✅ BBB- | 0.343 | 4/6 |
+| Acyclovir | BBB- | ✅ BBB- | 0.335 | 4/6 |
+| Metformin | BBB- | ✅ BBB- | 0.349 | 4/6 |
+| Benzenesulfonic acid | BBB- | ✅ BBB- | 0.845* | 6/6 |
+| Ciprofloxacin | BBB- | ✅ BBB- | 0.778* | 6/6 |
+
+*Score before chemical override applied.
 
 ---
 
-## Figures
+## Features
 
-<div align="center">
-
-| ROC Curves | Confusion Matrix |
-|:---:|:---:|
-| ![ROC](figures/fig1_roc_curves.png) | ![CM](figures/fig2_confusion_matrix.png) |
-
-| Metrics Comparison | Chemical Space PCA |
-|:---:|:---:|
-| ![Metrics](figures/fig3_metrics_comparison.png) | ![Space](figures/fig4_chemical_space.png) |
-
-| Descriptor Distributions |
-|:---:|
-| ![Descriptors](figures/fig6_descriptor_distributions.png) |
-
-</div>
+- **3-tier classification** — BBB+ / Borderline / BBB- (reduces false certainty)
+- **Calibrated ensemble** — Random Forest + Logistic Regression, Brier Score 0.082
+- **10 chemical override rules** — sulfonates, penams, fluoroquinolones, catecholamines
+- **Methylxanthine-aware** — caffeine/theophylline LogP penalty excluded correctly
+- **Applicability domain** — Within / Borderline / Outside domain label per prediction
+- **PubChem name lookup** — auto-identifies compound name and CID from SMILES
+- **Prediction reasoning panel** — explains each classification in chemical terms
+- **Structural similarity** — Tanimoto comparison to 17 known BBB+/BBB- reference drugs
+- **Batch prediction** — upload CSV, get predictions + probability distribution plot
+- **23 unit tests** — GitHub Actions CI passing
 
 ---
 
@@ -69,30 +90,32 @@ This project builds a **multi-model computational pipeline** to predict BBB perm
 
 ```
 bbb-permeability-gnn/
-├── data/
-│   ├── raw/bbbp.csv              # 87 curated BBB+/BBB− drugs (SMILES + labels)
-│   └── processed/bbbp_clean.csv  # Cleaned with descriptors + scaffold split info
-├── src/
-│   ├── data/
-│   │   └── preprocessing.py      # Descriptors, fingerprints, scaffold split
-│   ├── models/
-│   │   ├── models.py             # RF, GBT, SVM, LR baselines + GNN export
-│   │   └── gnn_attentivefp.py    # AttentiveFP GNN (PyTorch Geometric, run on Colab)
-│   └── evaluation/
-│       └── evaluate.py           # Metrics, ROC curves, SHAP, all figures
-├── scripts/
-│   ├── train_baselines.py        # Train all sklearn models + generate figures
-│   └── predict.py               # CLI prediction from SMILES or CSV
 ├── app/
-│   └── streamlit_app.py         # Interactive web app (Streamlit)
+│   └── streamlit_app.py          # v6.1 interactive web app (live on Streamlit Cloud)
+├── data/
+│   ├── raw/
+│   │   └── B3DB_classification.tsv   # 7,807 compounds (Meng et al. 2021)
+│   └── processed/
+│       └── b3db_clean.csv            # Validated + descriptors computed
+├── src/
+│   ├── data/preprocessing.py         # RDKit descriptors, fingerprints, scaffold split
+│   ├── models/
+│   │   ├── models.py                 # RF, GBT, SVM, LR baselines
+│   │   └── gnn_attentivefp.py        # AttentiveFP GNN (PyTorch Geometric, run on Colab)
+│   └── evaluation/evaluate.py        # Metrics, ROC curves, SHAP, all figures
+├── scripts/
+│   ├── train_baselines.py            # Train all models + generate figures
+│   └── predict.py                    # CLI prediction from SMILES or CSV
 ├── notebooks/
-│   ├── 01_data_exploration.ipynb # EDA + descriptor analysis
-│   └── 02_gnn_training.ipynb    # GNN training (Google Colab, GPU)
-├── figures/                      # Publication-quality output figures
-├── results/                      # Model metrics + saved models
+│   ├── 01_data_exploration.ipynb     # EDA + descriptor analysis
+│   └── 02_gnn_training.ipynb         # AttentiveFP GNN (Google Colab, GPU)
+├── docs/
+│   └── BBB_Technical_Report.md       # Full technical report + results discussion
+├── figures/                          # Publication-quality output figures
+├── results/                          # Model metrics + saved models
 ├── tests/
-│   └── test_pipeline.py         # 23 unit tests (100% passing)
-├── configs/config.yaml           # Hyperparameters
+│   └── test_pipeline.py              # 23 unit tests (100% passing)
+├── configs/config.yaml               # Hyperparameters
 ├── requirements.txt
 └── README.md
 ```
@@ -101,78 +124,58 @@ bbb-permeability-gnn/
 
 ## Quick Start
 
-### Option 1: Run in Google Colab (No Setup)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sakeermr/bbb-permeability-gnn/blob/main/notebooks/02_gnn_training.ipynb)
+### Option 1 — Live Web App (no install)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://bbb-permeability-gnn-smz6lvxqzkw9qtd2mjyfff.streamlit.app/)
 
-### Option 2: Local Installation
+### Option 2 — Local Installation
 
 ```bash
-# Clone
 git clone https://github.com/sakeermr/bbb-permeability-gnn.git
 cd bbb-permeability-gnn
-
-# Create environment
-conda create -n bbb-env python=3.9
-conda activate bbb-env
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Train all baseline models + generate all figures
 python scripts/train_baselines.py
 ```
 
-### Option 3: Predict a Single Molecule
+### Option 3 — Predict a Single Molecule
 
 ```bash
 # BBB+ example (Caffeine)
 python scripts/predict.py --smiles "Cn1cnc2c1c(=O)n(C)c(=O)n2C"
 
-# BBB− example (Amoxicillin)
+# BBB- example (Amoxicillin)
 python scripts/predict.py --smiles "CC1(C)SC2C(NC(=O)C(N)c3ccc(O)cc3)C(=O)N2C1C(=O)O"
 
-# Batch predict from CSV
-python scripts/predict.py --csv my_molecules.csv --output results/predictions.csv
+# Batch predict
+python scripts/predict.py --csv molecules.csv --output results/predictions.csv
 ```
 
-### Option 4: Streamlit Web App
-
-```bash
-streamlit run app/streamlit_app.py
-```
+### Option 4 — GNN on Google Colab (GPU)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sakeermr/bbb-permeability-gnn/blob/main/notebooks/02_gnn_training.ipynb)
 
 ---
 
 ## Methods
 
 ### Dataset
-87 curated compounds with experimentally validated BBB permeability: 47 BBB+ (CNS-permeable drugs: benzodiazepines, antidepressants, antipsychotics, analgesics) and 40 BBB− (antibiotics, antihypertensives, statins, antivirals). SMILES validated with RDKit 2023.
+**B3DB** (Meng et al., *Scientific Data* 2021) — 7,807 compounds with experimentally validated BBB permeability labels compiled from 50 peer-reviewed sources. DOI: [10.1038/s41597-021-01069-5](https://doi.org/10.1038/s41597-021-01069-5)
 
-### Molecular Features
-- **Morgan fingerprints** (ECFP4, radius=2, 1024 bits) for tree-based models
-- **Physicochemical descriptors** (15 features: MW, LogP, TPSA, HBD, HBA, rotatable bonds, ring counts, QED, MolMR, FractionCSP3, etc.)
-- **Combined features** (descriptors + fingerprints) for SVM and Logistic Regression
-- **Molecular graphs** (atoms as nodes with 9 features, bonds as edges with 4 features) for GNN
+- 4,956 BBB+ (CNS-permeable)
+- 2,851 BBB- (non-permeable)
+- Source: [github.com/theochem/B3DB](https://github.com/theochem/B3DB)
 
-### Model Architecture (GNN)
-AttentiveFP-style Graph Attention Network (Xiong et al., JACS 2020):
-- Input: 9-dim atom features, 4-dim bond features
-- 2× Graph Attention layers (64 hidden, 4 heads) with BatchNorm + ELU
-- Global attention readout (sum + mean pooling)
-- 3-layer MLP (64→128→64→1) with Dropout (p=0.3)
-- Training: Adam (lr=1e-3, wd=1e-4), CosineAnnealing LR, 120 epochs, BCELoss
+### Decision Formula
+```
+Final Score = 0.50 × P(BBB+) + 0.35 × CNS_score + 0.15 × Similarity_score
 
-### Evaluation Protocol
-Scaffold-based Bemis-Murcko split (80/20) ensures structurally diverse test set. 5-fold stratified cross-validation on training set for hyperparameter selection. Metrics: AUC-ROC, AUC-PR, Accuracy, F1, Precision, Recall.
+BBB+:       Final Score ≥ 0.72  AND  CNS rules ≥ 4/6
+Borderline: 0.42 ≤ Final Score < 0.72
+BBB-:       Final Score < 0.42  OR   CNS rules ≤ 1/6
+```
 
----
+### CNS Drug-Likeness Rules (Pajouhesh & Lenz, 2005)
 
-## CNS Drug-likeness Rules
-
-This predictor also checks against established CNS drug-likeness criteria:
-
-| Property | BBB+ Criterion | Ro5 Limit |
-|----------|---------------|-----------|
+| Property | BBB+ Criterion | Lipinski Ro5 |
+|----------|---------------|-------------|
 | Molecular Weight | < 450 Da | < 500 Da |
 | LogP | −0.5 to 5.0 | < 5.0 |
 | TPSA | < 90 Å² | < 140 Å² |
@@ -184,8 +187,6 @@ This predictor also checks against established CNS drug-likeness criteria:
 
 ## Reproducibility
 
-All code, data, and trained models are publicly available.
-
 ```bash
 # Run all unit tests
 pytest tests/ -v
@@ -193,26 +194,38 @@ pytest tests/ -v
 # Reproduce all results from scratch
 python scripts/train_baselines.py
 
-# All figures regenerated in figures/
-# All metrics saved in results/all_model_metrics.csv
+# All figures saved to figures/
+# All metrics saved to results/all_model_metrics.csv
 ```
 
-Random seeds fixed at 42 throughout. Results should be fully reproducible on any machine with the same package versions.
+Random seeds fixed at 42. Results fully reproducible.
 
 ---
 
 ## Citation
 
-If you use this work, please cite:
-
 ```bibtex
-@misc{sakeermr2025bbb,
-  title   = {Multi-Model Prediction of Blood-Brain Barrier Permeability
-             Using Molecular Fingerprints and Graph Neural Networks},
+@misc{sakeermr2026bbb,
+  title   = {BBB Permeability Predictor v6.1: Calibrated Multi-Model Prediction
+             of Blood-Brain Barrier Permeability for CNS Drug Discovery},
   author  = {sakeermr},
-  year    = {2025},
+  year    = {2026},
   url     = {https://github.com/sakeermr/bbb-permeability-gnn},
-  note    = {Preprint available on ChemRxiv}
+  note    = {Dataset: B3DB (Meng et al., Scientific Data 2021)}
+}
+```
+
+### Dataset Citation
+```bibtex
+@article{Meng2021B3DB,
+  author  = {Meng, Fanwang and Xi, Yang and Huang, Jinfeng and Ayers, Paul W.},
+  title   = {A curated diverse molecular database of blood-brain barrier permeability
+             with chemical descriptors},
+  journal = {Scientific Data},
+  volume  = {8},
+  pages   = {289},
+  year    = {2021},
+  doi     = {10.1038/s41597-021-01069-5}
 }
 ```
 
@@ -220,24 +233,23 @@ If you use this work, please cite:
 
 ## Related Work
 
-- Xiong et al. (2020) Pushing the Boundaries of Molecular Representation for Drug Discovery with the Graph Attention Mechanism. *JACS* — AttentiveFP architecture
-- Wu et al. (2018) MoleculeNet: A Benchmark for Molecular Machine Learning. *Chem. Sci.* — BBBP dataset benchmark
-- Lipinski et al. (1997) Experimental and computational approaches to estimate solubility and permeability. *Adv. Drug Deliv. Rev.* — Rule of Five
-- Pajouhesh & Lenz (2005) Medicinal chemical properties of successful central nervous system drugs. *NeuroRx* — CNS drug-likeness rules
+- Meng et al. (2021) B3DB dataset. *Scientific Data* — gold-standard BBB benchmark
+- Xiong et al. (2019) AttentiveFP. *J. Am. Chem. Soc.* — GNN architecture used
+- Pajouhesh & Lenz (2005) CNS drug-likeness rules. *NeuroRx* — CNS rules reference
+- Wu et al. (2018) MoleculeNet. *Chem. Sci.* — benchmark framework
 
 ---
 
 ## License
 
-MIT License — see [LICENSE](LICENSE). Free to use for research and commercial purposes with attribution.
+MIT License — see [LICENSE](LICENSE).
 
 ---
 
 ## Contact
 
 **sakeermr**  
-Junior Cheminformatics Research Scientist (US Startup)  
-BSc Hons Medical Laboratory Science  
+Junior Cheminformatics Research Scientist  
 🔗 [linkedin.com/in/sakeermr](https://linkedin.com/in/sakeermr)  
 🐙 [github.com/sakeermr](https://github.com/sakeermr)
 
